@@ -65,15 +65,23 @@ echo
 
 # 4. Сборка образа
 echo "4. Тест сборки Docker образа..."
+echo "Команда: docker build -q -t cocktail-bot-test ."
 docker build -q -t cocktail-bot-test .
 if [ $? -eq 0 ]; then
     echo "✅ Docker образ успешно собран"
     
+    # Показываем информацию о образе
+    echo "Информация о собранном образе:"
+    docker images cocktail-bot-test --format "  Размер: {{.Size}}, Создан: {{.CreatedAt}}"
+    
     # Удаляем тестовый образ
+    echo "Удаление тестового образа..."
     docker rmi cocktail-bot-test 2>/dev/null
     echo "✅ Тестовый образ удален"
 else
     echo "❌ Ошибка сборки Docker образа"
+    echo "Подробности ошибки:"
+    docker build -t cocktail-bot-test .
     exit 1
 fi
 

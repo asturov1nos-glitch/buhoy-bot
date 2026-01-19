@@ -53,10 +53,7 @@ services:
       - "8080:8080"
     volumes:
       - ./src:/app/src
-      - ./init_cocktails.py:/app/init_cocktails.py
     restart: unless-stopped
-    command: >
-      sh -c "python init_cocktails.py && python -m src.main"
 
 volumes:
   postgres_data:
