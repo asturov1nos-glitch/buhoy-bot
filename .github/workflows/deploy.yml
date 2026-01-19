@@ -1,0 +1,77 @@
+name: Deploy Cocktail Bot to Yandex Cloud
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: cr.yandex
+  IMAGE_NAME: cocktail-bot
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Yandex Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: cr.yandex
+          username: json_key
+          password: ${{ secrets.YC_SA_JSON_KEY }}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags:
+            - cr.yandex/${{ secrets.YC_REGISTRY_ID }}/cocktail-bot:${{ github.sha }}
+            - cr.yandex/${{ secrets.YC_REGISTRY_ID }}/cocktail-bot:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Setup Yandex Cloud CLI
+        uses: yc-actions/yc-ccli-setup@v2
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_KEY }}
+      
+      - name: Deploy to Yandex Cloud Container
+        run: |
+          # Создаем контейнер если его нет
+          yc serverless container create --name cocktail-bot 2>/dev/null || true
+          
+          # Для первого деплоя используем polling режим
+          # WEBHOOK_URL пока не установлен
+          yc serverless container revision deploy \
+            --container-name cocktail-bot \
+            --image cr.yandex/${{ secrets.YC_REGISTRY_ID }}/cocktail-bot:${{ github.sha }} \
+            --service-account-id ${{ secrets.YC_SA_ID }} \
+            --cores 1 \
+            --memory 512MB \
+            --concurrency 8 \
+            --execution-timeout 30s \
+            --environment BOT_TOKEN=${{ secrets.BOT_TOKEN }} \
+            --environment ADMIN_IDS=${{ secrets.ADMIN_IDS }} \
+            --environment DB_HOST=${{ secrets.DB_HOST }} \
+            --environment DB_PORT=${{ secrets.DB_PORT }} \
+            --environment DB_NAME=${{ secrets.DB_NAME }} \
+            --environment DB_USER=${{ secrets.DB_USER }} \
+            --environment DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            --environment REDIS_HOST=${{ secrets.REDIS_HOST }} \
+            --environment REDIS_PORT=${{ secrets.REDIS_PORT }} \
+            --environment REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }} \
+            --environment PORT=8080
+      
+      - name: Get container URL
+        run: |
+          CONTAINER_URL=$(yc serverless container get --name cocktail-bot --format json | jq -r '.url')
+          echo "🚀 Контейнер развернут по адресу: $CONTAINER_URL"
+          echo "👉 Добавь этот URL в GitHub Secrets как WEBHOOK_URL: $CONTAINER_URL"
