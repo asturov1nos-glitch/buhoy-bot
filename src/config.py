@@ -30,27 +30,27 @@ class Config:
             except ValueError as e:
                 logger.error(f"Ошибка парсинга ADMIN_IDS: {e}")
         
-        # SQLite БД - путь зависит от окружения
-        if os.getenv('TIMEWEB_ENV'):
-            # В Timeweb - используем /tmp с S3 бэкапами
-            self.DB_PATH = os.getenv('DB_PATH', '/tmp/cocktails.db')
-        else:
-            # Локально - используем текущую директорию
-            self.DB_PATH = os.getenv('DB_PATH', './cocktails.db')
+        # SQLite БД
+        self.DB_PATH = '/tmp/cocktails.db'
         
         # Создаем папку для базы если её нет
         db_dir = Path(self.DB_PATH).parent
         db_dir.mkdir(parents=True, exist_ok=True)
         
-        self.database_url = f"sqlite+aiosqlite:///{self.DB_PATH}"
-        
-        # S3 настройки
+        # S3 настройки - DEBUG ВЫВОД
         self.S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL', '')
         self.S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY', '')
         self.S3_SECRET_KEY = os.getenv('S3_SECRET_KEY', '')
-        self.S3_BUCKET = os.getenv('S3_BUCKET', 'cocktail-bot-backups')
+        self.S3_BUCKET = os.getenv('S3_BUCKET', '')
         
-        # Проверяем S3 конфигурацию
+        # DEBUG: Покажем что получили
+        logger.info(f"🔍 DEBUG S3 переменные:")
+        logger.info(f"  S3_ENDPOINT_URL: {'✅ Есть' if self.S3_ENDPOINT_URL else '❌ Нет'} -> {self.S3_ENDPOINT_URL[:30] if self.S3_ENDPOINT_URL else ''}")
+        logger.info(f"  S3_ACCESS_KEY: {'✅ Есть' if self.S3_ACCESS_KEY else '❌ Нет'} -> {self.S3_ACCESS_KEY[:10] + '...' if self.S3_ACCESS_KEY else ''}")
+        logger.info(f"  S3_SECRET_KEY: {'✅ Есть' if self.S3_SECRET_KEY else '❌ Нет'} -> {self.S3_SECRET_KEY[:10] + '...' if self.S3_SECRET_KEY else ''}")
+        logger.info(f"  S3_BUCKET: {'✅ Есть' if self.S3_BUCKET else '❌ Нет'} -> {self.S3_BUCKET}")
+        
+        # Проверяем S3
         self.S3_CONFIGURED = all([
             self.S3_ENDPOINT_URL,
             self.S3_ACCESS_KEY,
@@ -58,18 +58,14 @@ class Config:
             self.S3_BUCKET
         ])
         
+        self.database_url = f"sqlite+aiosqlite:///{self.DB_PATH}"
+        
+        logger.info(f"✅ Конфигурация: Бот={bool(self.BOT_TOKEN)}, Админы={self.ADMIN_IDS}, БД={self.DB_PATH}")
+        
         if self.S3_CONFIGURED:
-            logger.info("✅ S3 настроен для бэкапов")
+            logger.info("✅✅✅ S3 НАСТРОЕН! Бэкапы будут работать.")
         else:
-            logger.warning("⚠️ S3 не настроен. Бэкапы будут отключены.")
-            logger.info("ℹ️ Для настройки S3 добавь переменные: S3_ENDPOINT_URL, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET")
-        
-        # Порт
-        self.PORT = int(os.getenv('PORT', '8080'))
-        
-        logger.info(f"✅ Конфигурация: Бот={bool(self.BOT_TOKEN)}, Админы={self.ADMIN_IDS}")
-        logger.info(f"✅ Database: {self.DB_PATH}")
-        logger.info(f"✅ S3: {'Настроен ✅' if self.S3_CONFIGURED else 'Не настроен ⚠️'}")
+            logger.warning("⚠️ S3 не настроен. Добавьте переменные S3_*")
+            logger.info("ℹ️ Проверьте в Timeweb Console → App Platform → Переменные окружения")
 
-# Глобальный конфиг
 config = Config()
