@@ -1,4 +1,7 @@
 import asyncio
+# ФИКС ДЛЯ TIMEWEB
+import os
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:////data/cocktails.db"
 import logging
 import sys
 from aiogram import Bot, Dispatcher

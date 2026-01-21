@@ -1,46 +1,52 @@
-name: Deploy to Yandex Cloud Container
+name: Deploy Cocktail Bot to Yandex Cloud
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: cr.yandex
+  IMAGE_NAME: cocktail-bot
+  CONTAINER_NAME: cocktail-bot
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Get Yandex Cloud IAM token
-        id: token
-        uses: docker://ghcr.io/yc-actions/yc-iam-token-fed:1.0.0
+      
+      - name: Setup Yandex Cloud CLI
+        uses: yc-actions/yc-ccli-setup@v2
         with:
-          yc-sa-id: ${{ secrets.YC_SA_ID }}
-
-      - name: Deploy to Serverless Container
-        uses: yc-actions/yc-sls-container-deploy@v4
-        with:
-          # === ОБЯЗАТЕЛЬНО ЗАМЕНИ ЭТИ ЗНАЧЕНИЯ ===
-          # Имя контейнера в Yandex Cloud
-          container-name: ${{ secrets.YC_CONTAINER_NAME }}
-          # ID твоего каталога в Yandex Cloud
-          folder-id: b1ggup1st10ftml9ku29  # <--- ЗАМЕНИ НА СВОЙ FOLDER-ID!
-          # ID сервисного аккаунта с правами на контейнеры
-          revision-service-account-id: ${{ secrets.YC_SA_ID }}
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_KEY }}
+      
+      - name: Create or update container
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
+          DB_HOST: localhost
+          REDIS_HOST: localhost
+        run: |
+          # Создаем контейнер если его нет (для первого запуска)
+          yc serverless container create --name $CONTAINER_NAME 2>/dev/null || true
           
-          # === НАСТРОЙКИ РЕСУРСОВ ===
-          revision-memory: 512MB
-          revision-cores: 1
-          revision-execution-timeout: 30s
-          revision-concurrency: 8
+          # Деплоим ревизию с переменными окружения
+          yc serverless container revision deploy \
+            --container-name $CONTAINER_NAME \
+            --memory 512MB \
+            --cores 1 \
+            --execution-timeout 30s \
+            --concurrency 8 \
+            --service-account-id ${{ secrets.YC_SA_ID }} \
+            --environment "BOT_TOKEN=$BOT_TOKEN" \
+            --environment "ADMIN_IDS=$ADMIN_IDS" \
+            --environment "DB_HOST=$DB_HOST" \
+            --environment "REDIS_HOST=$REDIS_HOST" \
+            --source-path .
           
-          # === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ДЛЯ БОТА ===
-          revision-environment: |
-            BOT_TOKEN=${{ secrets.BOT_TOKEN }}
-            ADMIN_IDS=${{ secrets.ADMIN_IDS }}
-            DB_HOST=localhost
-            REDIS_HOST=localhost
-            # PORT НЕ УКАЗЫВАЕМ - В YC ОН ВСЕГДА 8080
-          
-          # === ДОПОЛНИТЕЛЬНЫЕ ОПЦИИ ===
-          # Раскомментируй для первого запуска (создаст контейнер если его нет)
-          # create-if-not-exists: true
+          # Получаем URL контейнера
+          CONTAINER_URL=$(yc serverless container get --name $CONTAINER_NAME --format json | jq -r '.url')
+          echo "🚀 Контейнер развернут по адресу: $CONTAINER_URL"
+          echo "👉 Проверь здоровье: $CONTAINER_URL/health"
