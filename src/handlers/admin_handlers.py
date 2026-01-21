@@ -3,6 +3,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
+from aiogram.filters import StateFilter  # Добавь эту строку в начало
 
 from src.config import config
 from src.database import Database
@@ -151,7 +152,7 @@ async def add_cocktail_start(message: Message, state: FSMContext):
     )
     await state.set_state(AddCocktail.name)
 
-@router.message(AddCocktail.name)
+@router.message(StateFilter(AddCocktail.name))
 async def process_name(message: Message, state: FSMContext):
     if len(message.text) > 100:
         await message.answer("Название слишком длинное (макс 100 символов). Введите снова:")
@@ -164,7 +165,7 @@ async def process_name(message: Message, state: FSMContext):
     )
     await state.set_state(AddCocktail.description)
 
-@router.message(AddCocktail.description)
+@router.message(StateFilter(AddCocktail.description))
 async def process_description(message: Message, state: FSMContext):
     await state.update_data(description=message.text)
     await message.answer(
@@ -176,7 +177,7 @@ async def process_description(message: Message, state: FSMContext):
     )
     await state.set_state(AddCocktail.ingredients)
 
-@router.message(AddCocktail.ingredients)
+@router.message(StateFilter(AddCocktail.ingredients))
 async def process_ingredients(message: Message, state: FSMContext):
     try:
         ingredients = {}
@@ -209,7 +210,7 @@ async def process_ingredients(message: Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {e}. Введите ингредиенты снова:")
         return
 
-@router.message(AddCocktail.recipe)
+@router.message(StateFilter(AddCocktail.recipe))
 async def process_recipe(message: Message, state: FSMContext):
     await state.update_data(recipe=message.text)
     await message.answer(
@@ -220,7 +221,7 @@ async def process_recipe(message: Message, state: FSMContext):
     )
     await state.set_state(AddCocktail.tags)
 
-@router.message(AddCocktail.tags)
+@router.message(StateFilter(AddCocktail.tags))
 async def process_tags(message: Message, state: FSMContext):
     tags = [tag.strip() for tag in message.text.split(',') if tag.strip()]
     await state.update_data(tags=tags)
@@ -241,7 +242,7 @@ async def process_tags(message: Message, state: FSMContext):
     )
     await state.set_state(AddCocktail.strength)
 
-@router.callback_query(AddCocktail.strength, F.data.startswith("strength:"))
+@router.callback_query(StateFilter(AddCocktail.strength), F.data.startswith("strength:"))
 async def process_strength(callback: CallbackQuery, state: FSMContext):
     strength = int(callback.data.split(":")[1])
     await state.update_data(strength=strength)
@@ -262,7 +263,7 @@ async def process_strength(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AddCocktail.difficulty)
     await callback.answer()
 
-@router.callback_query(AddCocktail.difficulty, F.data.startswith("difficulty:"))
+@router.callback_query(StateFilter(AddCocktail.difficulty), F.data.startswith("difficulty:"))
 async def process_difficulty(callback: CallbackQuery, state: FSMContext):
     difficulty = callback.data.split(":")[1]
     await state.update_data(difficulty=difficulty)
@@ -297,7 +298,7 @@ async def process_difficulty(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AddCocktail.confirm)
     await callback.answer()
 
-@router.callback_query(AddCocktail.confirm, F.data == "save_cocktail")
+@router.callback_query(StateFilter(AddCocktail.confirm), F.data == "save_cocktail")
 async def save_cocktail(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     
@@ -334,7 +335,7 @@ async def save_cocktail(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
 
-@router.callback_query(AddCocktail.confirm, F.data == "edit_cocktail_data")
+@router.callback_query(StateFilter(AddCocktail.confirm), F.data == "edit_cocktail_data")
 async def edit_cocktail_data(callback: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -360,7 +361,7 @@ async def edit_cocktail_data(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-@router.callback_query(AddCocktail.confirm, F.data.startswith("edit_field:"))
+@router.callback_query(StateFilter(AddCocktail.confirm), F.data.startswith("edit_field:"))
 async def edit_specific_field(callback: CallbackQuery, state: FSMContext):
     field = callback.data.split(":")[1]
     
@@ -380,7 +381,7 @@ async def edit_specific_field(callback: CallbackQuery, state: FSMContext):
     
     await callback.answer()
 
-@router.message(AddCocktail.confirm)
+@router.message(StateFilter(AddCocktail.confirm))
 async def process_field_edit(message: Message, state: FSMContext):
     data = await state.get_data()
     field = data.get('editing_field')
@@ -446,7 +447,7 @@ async def process_field_edit(message: Message, state: FSMContext):
     
     await message.answer(preview, parse_mode="HTML", reply_markup=builder.as_markup())
 
-@router.callback_query(AddCocktail.confirm, F.data == "back_to_preview")
+@router.callback_query(StateFilter(AddCocktail.confirm), F.data == "back_to_preview")
 async def back_to_preview(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     
@@ -475,7 +476,7 @@ async def back_to_preview(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(preview, parse_mode="HTML", reply_markup=builder.as_markup())
     await callback.answer()
 
-@router.callback_query(AddCocktail.confirm, F.data == "cancel_add")
+@router.callback_query(StateFilter(AddCocktail.confirm), F.data == "cancel_add")
 async def cancel_add_cocktail(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.answer("❌ Добавление коктейля отменено.")
@@ -494,7 +495,7 @@ async def edit_cocktail_start(message: Message, state: FSMContext):
     else:
         await message.answer("В базе нет коктейлей для редактирования")
 
-@router.callback_query(EditCocktail.select_cocktail, F.data.startswith("view:"))
+@router.callback_query(StateFilter(EditCocktail.select_cocktail), F.data.startswith("view:"))
 async def select_cocktail_for_edit(callback: CallbackQuery, state: FSMContext):
     cocktail_id = int(callback.data.split(":")[1])
     await state.update_data(cocktail_id=cocktail_id)
@@ -535,7 +536,7 @@ async def select_cocktail_for_edit(callback: CallbackQuery, state: FSMContext):
     await state.set_state(EditCocktail.select_field)
     await callback.answer()
 
-@router.callback_query(EditCocktail.select_field, F.data.startswith("edit_field:"))
+@router.callback_query(StateFilter(EditCocktail.select_field), F.data.startswith("edit_field:"))
 async def select_field_to_edit(callback: CallbackQuery, state: FSMContext):
     field = callback.data.split(":")[1]
     await state.update_data(editing_field=field)
@@ -554,7 +555,7 @@ async def select_field_to_edit(callback: CallbackQuery, state: FSMContext):
     await state.set_state(EditCocktail.enter_value)
     await callback.answer()
 
-@router.message(EditCocktail.enter_value)
+@router.message(StateFilter(EditCocktail.enter_value))
 async def process_edit_value(message: Message, state: FSMContext):
     data = await state.get_data()
     cocktail_id = data['cocktail_id']
@@ -615,7 +616,7 @@ async def process_edit_value(message: Message, state: FSMContext):
     
     await state.clear()
 
-@router.callback_query(EditCocktail.select_field, F.data == "back_to_list")
+@router.callback_query(StateFilter(EditCocktail.select_field), F.data == "back_to_list")
 async def back_to_list_edit(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     cocktails = await Database.get_all_cocktails()
