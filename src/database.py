@@ -1,12 +1,18 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Text, JSON, Integer, Boolean
+from sqlalchemy import String, Text, JSON, Integer
 from typing import Optional
 from datetime import datetime
 import json
+import logging
+from pathlib import Path
 
 from src.config import config
+from src.s3_storage import s3_storage  # Импортируем S3 хранилище
 
+logger = logging.getLogger(__name__)
+
+# Используем локальный SQLite файл
 engine = create_async_engine(config.database_url, echo=False)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -51,47 +57,11 @@ class Database:
             session.add(cocktail)
             await session.commit()
             await session.refresh(cocktail)
+            
+            # После добавления делаем бэкап в S3
+            await s3_storage.upload_backup(comment=f"Добавлен коктейль: {cocktail.name}")
+            
             return cocktail
-    
-    @staticmethod
-    async def get_cocktail_by_id(cocktail_id: int):
-        async with async_session() as session:
-            return await session.get(Cocktail, cocktail_id)
-    
-    @staticmethod
-    async def get_cocktail_by_name(name: str):
-        async with async_session() as session:
-            from sqlalchemy import select
-            query = select(Cocktail).where(Cocktail.name.ilike(f"%{name}%"))
-            result = await session.execute(query)
-            return result.scalars().all()
-    
-    @staticmethod
-    async def get_all_cocktails():
-        async with async_session() as session:
-            from sqlalchemy import select
-            query = select(Cocktail).order_by(Cocktail.name)
-            result = await session.execute(query)
-            return result.scalars().all()
-    
-    @staticmethod
-    async def search_cocktails(**kwargs):
-        async with async_session() as session:
-            from sqlalchemy import select, and_
-            conditions = []
-            
-            if name := kwargs.get('name'):
-                conditions.append(Cocktail.name.ilike(f"%{name}%"))
-            if ingredient := kwargs.get('ingredient'):
-                conditions.append(Cocktail.ingredients.cast(String).ilike(f"%{ingredient}%"))
-            if tag := kwargs.get('tag'):
-                conditions.append(Cocktail.tags.cast(String).ilike(f"%{tag}%"))
-            if max_strength := kwargs.get('max_strength'):
-                conditions.append(Cocktail.strength <= max_strength)
-            
-            query = select(Cocktail).where(and_(*conditions)).order_by(Cocktail.name)
-            result = await session.execute(query)
-            return result.scalars().all()
     
     @staticmethod
     async def update_cocktail(cocktail_id: int, **kwargs):
@@ -102,6 +72,10 @@ class Database:
                     setattr(cocktail, key, value)
                 await session.commit()
                 await session.refresh(cocktail)
+                
+                # После обновления делаем бэкап
+                await s3_storage.upload_backup(comment=f"Обновлен коктейль: {cocktail.name}")
+                
             return cocktail
     
     @staticmethod
@@ -111,8 +85,49 @@ class Database:
             if cocktail:
                 await session.delete(cocktail)
                 await session.commit()
+                
+                # После удаления делаем бэкап
+                await s3_storage.upload_backup(comment=f"Удален коктейль ID: {cocktail_id}")
+                
                 return True
             return False
+    
+    # Остальные методы остаются без изменений (get_cocktail_by_id, search_cocktails и т.д.)
+    @staticmethod
+    async def get_cocktail_by_id(cocktail_id: int):
+        async with async_session() as session:
+            return await session.get(Cocktail, cocktail_id)
+    
+    @staticmethod
+    async def get_all_cocktails():
+        async with async_session() as session:
+            from sqlalchemy import select
+            query = select(Cocktail).order_by(Cocktail.name)
+            result = await session.execute(query)
+            return result.scalars().all()
+    
+    @staticmethod
+    async def search_cocktails(name=None, ingredient=None, tag=None, max_strength=None):
+        async with async_session() as session:
+            from sqlalchemy import select, and_
+            conditions = []
+            
+            if name:
+                conditions.append(Cocktail.name.ilike(f"%{name}%"))
+            if ingredient:
+                conditions.append(Cocktail.ingredients.cast(String).ilike(f"%{ingredient}%"))
+            if tag:
+                conditions.append(Cocktail.tags.cast(String).ilike(f"%{tag}%"))
+            if max_strength:
+                conditions.append(Cocktail.strength <= max_strength)
+            
+            query = select(Cocktail)
+            if conditions:
+                query = query.where(and_(*conditions))
+            query = query.order_by(Cocktail.name)
+            
+            result = await session.execute(query)
+            return result.scalars().all()
     
     @staticmethod
     async def get_random_cocktail():
