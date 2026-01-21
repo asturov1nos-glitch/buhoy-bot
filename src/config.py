@@ -1,80 +1,49 @@
+# src/config.py - ВЕРСИЯ ДЛЯ TIMEWEB APP PLATFORM
 import os
 import logging
-from typing import List, Optional
+from typing import List
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class Config:
     def __init__(self):
-        # Загружаем .env файл если существует
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-            logger.info(".env файл загружен")
-        except Exception as e:
-            logger.warning(f"Не удалось загрузить .env файл: {e}")
+        # 1. Загружаем переменные окружения
+        self.BOT_TOKEN = os.getenv('BOT_TOKEN', '')
         
-        # Бот
-        self.BOT_TOKEN = self._get_env("BOT_TOKEN", "")
-        
-        # Админы
-        admin_ids = self._get_env("ADMIN_IDS", "")
+        # 2. Админы
+        admin_ids = os.getenv('ADMIN_IDS', '860643367')
         self.ADMIN_IDS = []
-        if admin_ids:
-            try:
-                self.ADMIN_IDS = [int(id.strip()) for id in admin_ids.split(',') if id.strip()]
-            except ValueError as e:
-                logger.error(f"Ошибка парсинга ADMIN_IDS: {e}")
+        try:
+            if admin_ids:
+                self.ADMIN_IDS = [int(id.strip()) for id in admin_ids.split(',')]
+        except ValueError:
+            logger.warning(f"Ошибка парсинга ADMIN_IDS: {admin_ids}")
         
-        # Database
-        self.DB_HOST = self._get_env("DB_HOST", "localhost")
-        self.DB_PORT = self._get_env("DB_PORT", "5432")
-        self.DB_NAME = self._get_env("DB_NAME", "cocktail_bot")
-        self.DB_USER = self._get_env("DB_USER", "postgres")
-        self.DB_PASSWORD = self._get_env("DB_PASSWORD", "postgres")
+        # 3. SQLite БД в Volume (ВАЖНО: /data - том App Platform)
+        self.DB_PATH = os.getenv('DB_PATH', '/data/cocktails.db')
         
-        # Redis
-        self.REDIS_HOST = self._get_env("REDIS_HOST", "localhost")
-        self.REDIS_PORT = int(self._get_env("REDIS_PORT", "6379"))
-        self.REDIS_PASSWORD = self._get_env("REDIS_PASSWORD", None)
+        # 4. Формируем URL для SQLite
+        # Используем aiosqlite для асинхронной работы
+        self.database_url = f"sqlite+aiosqlite:///{self.DB_PATH}"
         
-        # Webhook
-        self.WEBHOOK_URL = self._get_env("WEBHOOK_URL", "")
-        self.WEBHOOK_PATH = self._get_env("WEBHOOK_PATH", "/webhook")
-        self.PORT = int(self._get_env("PORT", "8080"))
+        # 5. Для совместимости со старым кодом (если где-то используется)
+        self.DB_HOST = 'localhost'
+        self.DB_PORT = '5432'
+        self.DB_NAME = 'cocktail_bot'
+        self.DB_USER = 'postgres'
+        self.DB_PASSWORD = 'postgres'
         
-        logger.info(f"Конфигурация загружена. Бот: {bool(self.BOT_TOKEN)}, Админов: {len(self.ADMIN_IDS)}")
-    
-    def _get_env(self, key: str, default: str = None) -> str:
-        """Безопасное получение переменной окружения"""
-        value = os.getenv(key)
+        # 6. Redis не используем (заменили на MemoryStorage)
+        self.REDIS_HOST = 'localhost'
+        self.REDIS_PORT = 6379
         
-        if value is None:
-            return default
+        # 7. Порт (для Timeweb App Platform)
+        self.PORT = int(os.getenv('PORT', '8080'))
         
-        # Удаляем лишние пробелы и кавычки
-        value = value.strip().strip('"').strip("'")
-        
-        return value if value else default
-    
-    @property
-    def database_url(self) -> str:
-        """URL для подключения к PostgreSQL"""
-        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
-    
-    @property
-    def redis_url(self) -> str:
-        """URL для подключения к Redis"""
-        if self.REDIS_PASSWORD:
-            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/0"
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
-    
-    @property
-    def use_webhook(self) -> bool:
-        """Использовать webhook режим?"""
-        return bool(self.WEBHOOK_URL)
+        logger.info(f"✅ Конфигурация: Бот={bool(self.BOT_TOKEN)}, Админы={self.ADMIN_IDS}")
+        logger.info(f"✅ База данных: {self.DB_PATH}")
+        logger.info(f"✅ Database URL: {self.database_url}")
 
-# Создаем глобальный конфиг
+# Глобальный экземпляр
 config = Config()
