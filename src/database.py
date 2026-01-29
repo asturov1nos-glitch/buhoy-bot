@@ -92,9 +92,24 @@ class Database:
             query_lower = query.lower()
             found = []
             for cocktail in cocktails:
-                if (query_lower in cocktail.name.lower() or 
-                    query_lower in cocktail.description.lower() or
-                    any(query_lower in tag.lower() for tag in cocktail.tags) or
-                    any(query_lower in ing.lower() for ing in cocktail.ingredients.keys())):
+                # Безопасная проверка с учетом возможных None значений
+                name_match = query_lower in cocktail.name.lower() if cocktail.name else False
+                
+                # Описание может быть None!
+                desc_match = False
+                if cocktail.description:
+                    desc_match = query_lower in cocktail.description.lower()
+                
+                # Теги могут быть пустым списком
+                tags_match = False
+                if cocktail.tags:
+                    tags_match = any(query_lower in tag.lower() for tag in cocktail.tags)
+                
+                # Ингредиенты могут быть пустым словарем
+                ing_match = False
+                if cocktail.ingredients:
+                    ing_match = any(query_lower in ing.lower() for ing in cocktail.ingredients.keys())
+                
+                if name_match or desc_match or tags_match or ing_match:
                     found.append(cocktail)
             return found
