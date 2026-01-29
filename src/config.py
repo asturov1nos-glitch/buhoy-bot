@@ -1,56 +1,59 @@
 import os
 import logging
-from pathlib import Path
-from typing import List
+from dotenv import load_dotenv
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class Config:
     def __init__(self):
-        # Загружаем .env если есть
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-            logger.info(".env файл загружен")
-        except:
-            pass
+        # Загружаем переменные окружения
+        load_dotenv()
+        logger.info(".env файл загружен")
         
-        # Бот
+        # Токен бота
         self.BOT_TOKEN = os.getenv('BOT_TOKEN', '')
         if not self.BOT_TOKEN:
-            logger.error("❌ BOT_TOKEN не установлен!")
+            logger.error("❌ BOT_TOKEN не найден в .env")
         
-        # Админы
-        admin_ids = os.getenv('ADMIN_IDS', '')
+        # Администраторы
+        admin_ids_str = os.getenv('ADMIN_IDS', '')
         self.ADMIN_IDS = []
-        if admin_ids:
+        
+        if admin_ids_str:
             try:
-                self.ADMIN_IDS = [int(id.strip()) for id in admin_ids.split(',')]
-            except ValueError as e:
+                # Убираем пробелы
+                admin_ids_str = admin_ids_str.strip()
+                
+                # Если строка начинается с [ и заканчивается ], значит это список
+                if admin_ids_str.startswith('[') and admin_ids_str.endswith(']'):
+                    import ast
+                    admin_ids_list = ast.literal_eval(admin_ids_str)
+                    self.ADMIN_IDS = [int(id) for id in admin_ids_list]
+                # Если есть запятые, значит несколько ID
+                elif ',' in admin_ids_str:
+                    self.ADMIN_IDS = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip()]
+                # Иначе один ID
+                else:
+                    self.ADMIN_IDS = [int(admin_ids_str)]
+            except Exception as e:
                 logger.error(f"Ошибка парсинга ADMIN_IDS: {e}")
+                self.ADMIN_IDS = []
         
-        # SQLite БД
-        self.DB_PATH = '/tmp/cocktails.db'
+        # База данных
+        self.database_url = os.getenv('DATABASE_URL', 'sqlite+aiosqlite:////tmp/cocktails.db')
         
-        # Создаем папку для базы если её нет
-        db_dir = Path(self.DB_PATH).parent
-        db_dir.mkdir(parents=True, exist_ok=True)
+        # Путь к файлу базы данных (для S3 бэкапов)
+        if self.database_url.startswith('sqlite+aiosqlite:///'):
+            self.DB_PATH = self.database_url.replace('sqlite+aiosqlite:///', '')
+        else:
+            self.DB_PATH = '/tmp/cocktails.db'
         
-        # S3 настройки - DEBUG ВЫВОД
+        # S3 конфигурация
         self.S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL', '')
         self.S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY', '')
         self.S3_SECRET_KEY = os.getenv('S3_SECRET_KEY', '')
         self.S3_BUCKET = os.getenv('S3_BUCKET', '')
         
-        # DEBUG: Покажем что получили
-        logger.info(f"🔍 DEBUG S3 переменные:")
-        logger.info(f"  S3_ENDPOINT_URL: {'✅ Есть' if self.S3_ENDPOINT_URL else '❌ Нет'} -> {self.S3_ENDPOINT_URL[:30] if self.S3_ENDPOINT_URL else ''}")
-        logger.info(f"  S3_ACCESS_KEY: {'✅ Есть' if self.S3_ACCESS_KEY else '❌ Нет'} -> {self.S3_ACCESS_KEY[:10] + '...' if self.S3_ACCESS_KEY else ''}")
-        logger.info(f"  S3_SECRET_KEY: {'✅ Есть' if self.S3_SECRET_KEY else '❌ Нет'} -> {self.S3_SECRET_KEY[:10] + '...' if self.S3_SECRET_KEY else ''}")
-        logger.info(f"  S3_BUCKET: {'✅ Есть' if self.S3_BUCKET else '❌ Нет'} -> {self.S3_BUCKET}")
-        
-        # Проверяем S3
         self.S3_CONFIGURED = all([
             self.S3_ENDPOINT_URL,
             self.S3_ACCESS_KEY,
@@ -58,14 +61,19 @@ class Config:
             self.S3_BUCKET
         ])
         
-        self.database_url = f"sqlite+aiosqlite:///{self.DB_PATH}"
-        
-        logger.info(f"✅ Конфигурация: Бот={bool(self.BOT_TOKEN)}, Админы={self.ADMIN_IDS}, БД={self.DB_PATH}")
+        # Логирование конфигурации
+        logger.info("🔍 DEBUG S3 переменные:")
+        logger.info(f"  S3_ENDPOINT_URL: {'✅ Есть' if self.S3_ENDPOINT_URL else '❌ Нет'} -> {self.S3_ENDPOINT_URL[:30] if self.S3_ENDPOINT_URL else ''}")
+        logger.info(f"  S3_ACCESS_KEY: {'✅ Есть' if self.S3_ACCESS_KEY else '❌ Нет'} -> {self.S3_ACCESS_KEY[:10] + '...' if self.S3_ACCESS_KEY else ''}")
+        logger.info(f"  S3_SECRET_KEY: {'✅ Есть' if self.S3_SECRET_KEY else '❌ Нет'} -> {self.S3_SECRET_KEY[:10] + '...' if self.S3_SECRET_KEY else ''}")
+        logger.info(f"  S3_BUCKET: {'✅ Есть' if self.S3_BUCKET else '❌ Нет'} -> {self.S3_BUCKET}")
         
         if self.S3_CONFIGURED:
             logger.info("✅✅✅ S3 НАСТРОЕН! Бэкапы будут работать.")
         else:
             logger.warning("⚠️ S3 не настроен. Добавьте переменные S3_*")
-            logger.info("ℹ️ Проверьте в Timeweb Console → App Platform → Переменные окружения")
+        
+        logger.info(f"✅ Конфигурация: Бот={'True' if self.BOT_TOKEN else 'False'}, Админы={self.ADMIN_IDS}, БД={self.database_url}, DB_PATH={self.DB_PATH}")
 
+# Создаем глобальный экземпляр конфигурации
 config = Config()
