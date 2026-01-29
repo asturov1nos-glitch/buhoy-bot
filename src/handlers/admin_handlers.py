@@ -2,8 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import asyncio
-from aiogram.filters import StateFilter  # Добавь эту строку в начало
+from aiogram.filters import StateFilter
 
 from src.config import config
 from src.database import Database
@@ -12,7 +11,10 @@ from src.states import AddCocktail, EditCocktail
 from src.filters import IsAdminFilter
 from src.s3_storage import s3_storage
 
+# Создаем роутер
 router = Router()
+
+# Применяем фильтр администратора
 router.message.filter(IsAdminFilter())
 router.callback_query.filter(IsAdminFilter())
 

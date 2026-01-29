@@ -7,91 +7,61 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from src.config import config
 from src.database import Database
 from src.s3_storage import s3_storage
-from src.handlers import user_handlers, admin_handlers
 
-logging.basicConfig(level=logging.INFO)
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
-async def periodic_backup():
-    """Периодический бэкап каждые 15 минут"""
-    while True:
-        await asyncio.sleep(900)  # 15 минут
-        try:
-            if s3_storage.is_configured():
-                logger.info("🔄 Запуск периодического бэкапа...")
-                success = await s3_storage.upload_backup(comment="Периодический бэкап")
-                if success:
-                    logger.info("✅ Периодический бэкап завершен")
-        except Exception as e:
-            logger.error(f"❌ Ошибка периодического бэкапа: {e}")
-
-async def startup_tasks():
-    """Задачи при старте бота"""
-    logger.info("🚀 Выполняю стартовые задачи...")
+async def main():
+    logger.info("Запуск COCKTAIL BOT (TIMEWEB + S3 VERSION)")
+    logger.info("=" * 60)
     
-    # 1. Проверяем и создаем файл базы
-    db_path = Path(config.DB_PATH)
-    if not db_path.exists():
-        logger.info(f"📁 Создаю файл базы: {config.DB_PATH}")
-        db_path.parent.mkdir(parents=True, exist_ok=True)
+    # Создание бота и диспетчера
+    bot = Bot(token=config.BOT_TOKEN)
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
     
-    # 2. Загружаем из S3 если настроено
+    # Регистрация хендлеров
+    from src.handlers import user_handlers, admin_handlers
+    dp.include_router(user_handlers.router)
+    dp.include_router(admin_handlers.router)
+    
+    # Инициализация базы данных
+    logger.info("Инициализация базы данных...")
+    try:
+        # Используем метод create_tables из Database
+        await Database.create_tables()
+        logger.info("✅ База данных инициализирована")
+    except Exception as e:
+        logger.error(f"❌ Ошибка инициализации базы данных: {e}")
+        # Если есть файл базы данных, попробуем продолжить
+        import os
+        if os.path.exists(config.database_url.replace('sqlite+aiosqlite:///', '')):
+            logger.warning("⚠️ Файл базы данных существует, продолжаем...")
+        else:
+            logger.error("❌ Файл базы данных не существует, создаем новый...")
+            # Попробуем создать файл вручную
+            try:
+                db_path = config.database_url.replace('sqlite+aiosqlite:///', '')
+                Path(db_path).touch()
+                logger.info(f"✅ Создан файл базы данных: {db_path}")
+            except Exception as e2:
+                logger.error(f"❌ Не удалось создать файл базы данных: {e2}")
+    
+    # Проверка S3
     if s3_storage.is_configured():
-        logger.info("☁️ Проверяем бэкапы в S3...")
-        await s3_storage.download_backup()
+        logger.info("✅ S3 настроен")
     else:
         logger.warning("⚠️ S3 не настроен. Работаем с локальной базой.")
     
-    # 3. Создаем таблицы
-    logger.info("🗄️ Инициализация базы данных...")
-    try:
-        await Database.create_tables()
-        count = await Database.get_cocktails_count()
-        logger.info(f"✅ БД готова. Коктейлей: {count}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка БД: {e}")
-        raise
+    logger.info(f"Бот запущен в режиме polling")
+    logger.info(f"Админы: {config.ADMIN_IDS}")
     
-    # 4. Запускаем периодический бэкап
-    if s3_storage.is_configured():
-        asyncio.create_task(periodic_backup())
-        logger.info("✅ Периодический бэкап в S3 запущен (каждые 15 мин)")
-
-async def main():
-    logger.info("=" * 50)
-    logger.info("🍸 ЗАПУСК COCKTAIL BOT (TIMEWEB + S3 VERSION)")
-    logger.info("=" * 50)
-    
-    if not config.BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN не установлен! Завершаю работу.")
-        return
-    
-    try:
-        # Стартовые задачи
-        await startup_tasks()
-        
-        # Создаем бота
-        bot = Bot(token=config.BOT_TOKEN)
-        storage = MemoryStorage()
-        dp = Dispatcher(storage=storage)
-        
-        # Подключаем обработчики
-        dp.include_router(user_handlers.router)
-        dp.include_router(admin_handlers.router)
-        
-        logger.info("✅ Бот запущен в режиме polling")
-        logger.info(f"🤖 Админы: {config.ADMIN_IDS}")
-        logger.info(f"💾 База: {config.DB_PATH}")
-        logger.info(f"☁️ S3: {'✅ Настроен' if s3_storage.is_configured() else '⚠️ Не настроен'}")
-        
-        await dp.start_polling(bot)
-        
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка: {e}")
-        raise
+    # Запуск бота
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("👋 Бот остановлен")
+    asyncio.run(main())
