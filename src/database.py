@@ -51,96 +51,20 @@ class Database:
             yield session
     
     @staticmethod
-    async def add_cocktail(**kwargs):
+    @staticmethod
+    async def add_cocktail(name, description, ingredients, recipe, tags, strength, difficulty, image_url=None):
         async with async_session() as session:
-            cocktail = Cocktail(**kwargs)
+            cocktail = Cocktail(
+                name=name,
+                description=description,
+                ingredients=ingredients,
+                recipe=recipe,
+                tags=tags,
+                strength=strength,
+                difficulty=difficulty,
+                image_url=image_url
+            )
             session.add(cocktail)
             await session.commit()
             await session.refresh(cocktail)
-            
-            # После добавления делаем бэкап в S3
-            await s3_storage.upload_backup(comment=f"Добавлен коктейль: {cocktail.name}")
-            
             return cocktail
-    
-    @staticmethod
-    async def update_cocktail(cocktail_id: int, **kwargs):
-        async with async_session() as session:
-            cocktail = await session.get(Cocktail, cocktail_id)
-            if cocktail:
-                for key, value in kwargs.items():
-                    setattr(cocktail, key, value)
-                await session.commit()
-                await session.refresh(cocktail)
-                
-                # После обновления делаем бэкап
-                await s3_storage.upload_backup(comment=f"Обновлен коктейль: {cocktail.name}")
-                
-            return cocktail
-    
-    @staticmethod
-    async def delete_cocktail(cocktail_id: int):
-        async with async_session() as session:
-            cocktail = await session.get(Cocktail, cocktail_id)
-            if cocktail:
-                await session.delete(cocktail)
-                await session.commit()
-                
-                # После удаления делаем бэкап
-                await s3_storage.upload_backup(comment=f"Удален коктейль ID: {cocktail_id}")
-                
-                return True
-            return False
-    
-    # Остальные методы остаются без изменений (get_cocktail_by_id, search_cocktails и т.д.)
-    @staticmethod
-    async def get_cocktail_by_id(cocktail_id: int):
-        async with async_session() as session:
-            return await session.get(Cocktail, cocktail_id)
-    
-    @staticmethod
-    async def get_all_cocktails():
-        async with async_session() as session:
-            from sqlalchemy import select
-            query = select(Cocktail).order_by(Cocktail.name)
-            result = await session.execute(query)
-            return result.scalars().all()
-    
-    @staticmethod
-    async def search_cocktails(name=None, ingredient=None, tag=None, max_strength=None):
-        async with async_session() as session:
-            from sqlalchemy import select, and_
-            conditions = []
-            
-            if name:
-                conditions.append(Cocktail.name.ilike(f"%{name}%"))
-            if ingredient:
-                conditions.append(Cocktail.ingredients.cast(String).ilike(f"%{ingredient}%"))
-            if tag:
-                conditions.append(Cocktail.tags.cast(String).ilike(f"%{tag}%"))
-            if max_strength:
-                conditions.append(Cocktail.strength <= max_strength)
-            
-            query = select(Cocktail)
-            if conditions:
-                query = query.where(and_(*conditions))
-            query = query.order_by(Cocktail.name)
-            
-            result = await session.execute(query)
-            return result.scalars().all()
-    
-    @staticmethod
-    async def get_random_cocktail():
-        async with async_session() as session:
-            from sqlalchemy import select, func
-            query = select(Cocktail).order_by(func.random()).limit(1)
-            result = await session.execute(query)
-            return result.scalar()
-    
-    @staticmethod
-    async def get_cocktails_count():
-        async with async_session() as session:
-            from sqlalchemy import select, func
-            query = select(func.count(Cocktail.id))
-            result = await session.execute(query)
-            return result.scalar()
