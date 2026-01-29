@@ -1,18 +1,16 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Text, JSON, Integer
+from sqlalchemy import String, Text, JSON, Integer, select
 from typing import Optional
 from datetime import datetime
 import json
 import logging
-from pathlib import Path
+import random
 
 from src.config import config
-from src.s3_storage import s3_storage  # Импортируем S3 хранилище
 
 logger = logging.getLogger(__name__)
 
-# Используем локальный SQLite файл
 engine = create_async_engine(config.database_url, echo=False)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -30,7 +28,6 @@ class Cocktail(Base):
     tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     strength: Mapped[int] = mapped_column(Integer, default=0)
     difficulty: Mapped[str] = mapped_column(String(20), default="легко")
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     
     def get_ingredients_text(self):
@@ -46,13 +43,7 @@ class Database:
             await conn.run_sync(Base.metadata.create_all)
     
     @staticmethod
-    async def get_session() -> AsyncSession:
-        async with async_session() as session:
-            yield session
-    
-    @staticmethod
-    @staticmethod
-    async def add_cocktail(name, description, ingredients, recipe, tags, strength, difficulty, image_url=None):
+    async def add_cocktail(name, description, ingredients, recipe, tags, strength, difficulty):
         async with async_session() as session:
             cocktail = Cocktail(
                 name=name,
@@ -61,10 +52,49 @@ class Database:
                 recipe=recipe,
                 tags=tags,
                 strength=strength,
-                difficulty=difficulty,
-                image_url=image_url
+                difficulty=difficulty
             )
             session.add(cocktail)
             await session.commit()
             await session.refresh(cocktail)
             return cocktail
+    
+    @staticmethod
+    async def get_all_cocktails():
+        async with async_session() as session:
+            result = await session.execute(select(Cocktail))
+            return list(result.scalars().all())
+    
+    @staticmethod
+    async def get_cocktail_by_id(cocktail_id):
+        async with async_session() as session:
+            result = await session.execute(select(Cocktail).where(Cocktail.id == cocktail_id))
+            return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_random_cocktail():
+        async with async_session() as session:
+            result = await session.execute(select(Cocktail))
+            cocktails = list(result.scalars().all())
+            return random.choice(cocktails) if cocktails else None
+    
+    @staticmethod
+    async def get_cocktails_count():
+        async with async_session() as session:
+            result = await session.execute(select(Cocktail))
+            return len(list(result.scalars().all()))
+
+    @staticmethod
+    async def search_cocktails(query):
+        async with async_session() as session:
+            result = await session.execute(select(Cocktail))
+            cocktails = list(result.scalars().all())
+            query_lower = query.lower()
+            found = []
+            for cocktail in cocktails:
+                if (query_lower in cocktail.name.lower() or 
+                    query_lower in cocktail.description.lower() or
+                    any(query_lower in tag.lower() for tag in cocktail.tags) or
+                    any(query_lower in ing.lower() for ing in cocktail.ingredients.keys())):
+                    found.append(cocktail)
+            return found
